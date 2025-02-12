@@ -1,7 +1,7 @@
 tqdm
 easydict
-numpy
-torch
+numpy==1.26.4
+torch==2.0.0
 timm==0.6.11
 PyYAML
 matplotlib

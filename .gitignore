@@ -172,3 +172,4 @@ cython_debug/
 
 # more
 .DS_Store
+output/

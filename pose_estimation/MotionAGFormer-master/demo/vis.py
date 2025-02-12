@@ -1,9 +1,10 @@
+from collections import OrderedDict
 import sys
 import argparse
 import cv2
 from lib.preprocess import h36m_coco_format, revise_kpts
 from lib.hrnet.gen_kpts import gen_video_kpts as hrnet_pose
-import os 
+import os
 import numpy as np
 import torch
 import torch.nn as nn
@@ -16,7 +17,7 @@ from demo.lib.utils import normalize_screen_coordinates, camera_to_world
 from model.MotionAGFormer import MotionAGFormer
 
 import matplotlib
-import matplotlib.pyplot as plt 
+import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.gridspec as gridspec
 
@@ -72,7 +73,7 @@ def show3Dpose(vals, ax):
     ax.set_aspect('auto') # works fine in matplotlib==2.2.2
 
     white = (1.0, 1.0, 1.0, 0.0)
-    ax.xaxis.set_pane_color(white) 
+    ax.xaxis.set_pane_color(white)
     ax.yaxis.set_pane_color(white)
     ax.zaxis.set_pane_color(white)
 
@@ -89,7 +90,7 @@ def get_pose2D(video_path, output_dir):
     print('\nGenerating 2D pose...')
     keypoints, scores = hrnet_pose(video_path, det_dim=416, num_peroson=1, gen_output=True)
     keypoints, scores, valid_frames = h36m_coco_format(keypoints, scores)
-    
+
     # Add conf score to the last dim
     keypoints = np.concatenate((keypoints, scores[..., None]), axis=-1)
 
@@ -110,7 +111,7 @@ def img2video(video_path, output_dir):
     img = cv2.imread(names[0])
     size = (img.shape[1], img.shape[0])
 
-    videoWrite = cv2.VideoWriter(output_dir + video_name + '.mp4', fourcc, fps, size) 
+    videoWrite = cv2.VideoWriter(output_dir + video_name + '.mp4', fourcc, fps, size)
 
     for name in names:
         img = cv2.imread(name)
@@ -121,7 +122,7 @@ def img2video(video_path, output_dir):
 
 def showimage(ax, img):
     ax.set_xticks([])
-    ax.set_yticks([]) 
+    ax.set_yticks([])
     plt.axis('off')
     ax.imshow(img)
 
@@ -198,14 +199,24 @@ def get_pose3D(video_path, output_dir):
     args.n_frames = 243
     args = vars(args)
 
-    ## Reload 
-    model = nn.DataParallel(MotionAGFormer(**args)).cuda()
+    ## Reload
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    # model = nn.DataParallel(MotionAGFormer(**args)).cuda()
+    model = MotionAGFormer(**args).to(device)
 
     # Put the pretrained model of MotionAGFormer in 'checkpoint/'
     model_path = sorted(glob.glob(os.path.join('checkpoint', 'motionagformer-b-h36m.pth.tr')))[0]
 
-    pre_dict = torch.load(model_path)
-    model.load_state_dict(pre_dict['model'], strict=True)
+    pre_dict = torch.load(model_path, map_location=device)
+
+
+    # Add this code to remove the 'module.' prefix
+    new_state_dict = OrderedDict()
+    for k, v in pre_dict['model'].items():
+        name = k.replace('module.', '')  # Remove 'module.' prefix
+        new_state_dict[name] = v
+
+    model.load_state_dict(new_state_dict, strict=True)
 
     model.eval()
 
@@ -215,7 +226,7 @@ def get_pose3D(video_path, output_dir):
     # keypoints = keypoints[:240]
     # keypoints = keypoints[None, ...]
     # keypoints = turn_into_h36m(keypoints)
-    
+
 
     clips, downsample = turn_into_clips(keypoints)
 
@@ -239,16 +250,18 @@ def get_pose3D(video_path, output_dir):
         os.makedirs(output_dir_2D, exist_ok=True)
         cv2.imwrite(output_dir_2D + str(('%04d'% i)) + '_2D.png', image)
 
-    
+
     print('\nGenerating 3D pose...')
     for idx, clip in enumerate(clips):
-        input_2D = normalize_screen_coordinates(clip, w=img_size[1], h=img_size[0]) 
+        input_2D = normalize_screen_coordinates(clip, w=img_size[1], h=img_size[0])
         input_2D_aug = flip_data(input_2D)
-        
-        input_2D = torch.from_numpy(input_2D.astype('float32')).cuda()
-        input_2D_aug = torch.from_numpy(input_2D_aug.astype('float32')).cuda()
 
-        output_3D_non_flip = model(input_2D) 
+        # input_2D = torch.from_numpy(input_2D.astype('float32')).cuda()
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        input_2D = torch.from_numpy(input_2D.astype('float32')).to(device)
+        input_2D_aug = torch.from_numpy(input_2D_aug.astype('float32')).to(device)
+
+        output_3D_non_flip = model(input_2D)
         output_3D_flip = flip_data(model(input_2D_aug))
         output_3D = (output_3D_non_flip + output_3D_flip) / 2
 
@@ -257,7 +270,7 @@ def get_pose3D(video_path, output_dir):
 
         output_3D[:, :, 0, :] = 0
         post_out_all = output_3D[0].cpu().detach().numpy()
-        
+
         for j, post_out in enumerate(post_out_all):
             rot =  [0.1407056450843811, -0.1500701755285263, -0.755240797996521, 0.6223280429840088]
             rot = np.array(rot, dtype='float32')
@@ -268,7 +281,7 @@ def get_pose3D(video_path, output_dir):
 
             fig = plt.figure(figsize=(9.6, 5.4))
             gs = gridspec.GridSpec(1, 1)
-            gs.update(wspace=-0.00, hspace=0.05) 
+            gs.update(wspace=-0.00, hspace=0.05)
             ax = plt.subplot(gs[0], projection='3d')
             show3Dpose(post_out, ax)
 
@@ -277,9 +290,9 @@ def get_pose3D(video_path, output_dir):
             str(('%04d'% (idx * 243 + j)))
             plt.savefig(output_dir_3D + str(('%04d'% (idx * 243 + j))) + '_3D.png', dpi=200, format='png', bbox_inches='tight')
             plt.close(fig)
-        
 
-        
+
+
     print('Generating 3D pose successful!')
 
     ## all
@@ -333,5 +346,3 @@ if __name__ == "__main__":
     get_pose3D(video_path, output_dir)
     img2video(video_path, output_dir)
     print('Generating demo successful!')
-
-
