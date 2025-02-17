@@ -275,6 +275,8 @@ def train(args, opts):
         checkpoint_path = os.path.join(opts.checkpoint, opts.checkpoint_file if opts.checkpoint_file else "latest_epoch.pth.tr")
         if os.path.exists(checkpoint_path):
             checkpoint = torch.load(checkpoint_path, map_location=lambda storage, loc: storage)
+            # print(f"[DEBUG] Loading checkpoint from {checkpoint}")
+            # print(f"[DEBUG] state_dict {checkpoint['model']}")
             model.load_state_dict(checkpoint['model'], strict=True)
 
             if opts.resume:
@@ -369,7 +371,7 @@ def main():
     set_random_seed(opts.seed)
     torch.backends.cudnn.benchmark = False
     args = get_config(opts.config)
-    
+
     train(args, opts)
 
 
