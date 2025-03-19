@@ -176,3 +176,5 @@ output/
 *.mov
 *.mp4
 motion3d/
+data/data
+example
