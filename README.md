@@ -4,6 +4,8 @@ Real-time Human-to-humanoid pose estimation motion retargeting for virtual recon
 ## Acknowledgement
 Our code refers to the following repositories:
 
-- MotionAGFormer
+- MotioNet
+- OpenPose
+- Skeleten-Aware Networks
 
 We thank the authors for releasing their code.
